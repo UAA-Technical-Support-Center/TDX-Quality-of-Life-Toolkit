@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TDX Quality of Life Toolkit
 // @namespace    Any TDX Instance
-// @version      2.0.0
+// @version      2.0.1
 // @description  General-purpose toolkit for any TeamDynamix (TDX) instance's ticket detail and update pages: feed auto-expand, system-entry filtering, service portal links, keyboard shortcuts, templates menu keyboard fix, and off-hold date validation. Domain is auto-detected — no @match editing required.
 // @author       CJ Elardo, Alex Taylor, Claude
 // @match        *://*/TDNext/Apps/*/Tickets/TicketDet*
@@ -580,6 +580,20 @@
     waitForElement('#NewStatusId', () => {
       attachListenersIfNeeded();
       updateUI();
+
+      // Safety net: some date-picker widgets (jQuery UI / Kendo are both
+      // loaded on these pages) set the field's value via JS without firing
+      // a native 'input'/'change' event, which would otherwise leave the
+      // validator stuck showing stale state after the user picks a date.
+      // This is a plain fixed-rate timer, NOT a MutationObserver — a timer
+      // fires at a predictable rate regardless of what else happens on the
+      // page, so it can't turn into the reactive feedback loop that froze
+      // the browser previously. updateUI() is a no-op when nothing has
+      // actually changed, so each tick costs almost nothing.
+      setInterval(() => {
+        attachListenersIfNeeded();
+        updateUI();
+      }, 500);
     });
   }
 
