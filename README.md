@@ -1,4 +1,4 @@
-# TDX-Quality-of-Life-Toolkit
+# TDX Quality of Life Toolkit
 Browser userscript with multiple Quality of Life modifications for Team Dynamix (TDX)
 
 Works on **any TDX instance** — domain is auto-detected, no editing required to run this at an institution other than the one it was built for. If you're on the University of Alaska TDX instance, see the companion **UA TDX QOL** script for UA-specific features (Service/Form warnings, IT User Lookup Tools) that don't apply elsewhere.
