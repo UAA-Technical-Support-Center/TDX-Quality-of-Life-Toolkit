@@ -26,7 +26,7 @@ Once installed, the toolkit runs automatically in the background on relevant TDX
 ### On the Ticket Detail page (`.../Tickets/TicketDet...`)
 
 **Service Portal View/Copy Buttons**
-Adds two buttons next to Refresh in the toolbar: one opens the ticket's Service Portal view in a new tab, the other copies its Service Portal URL to your clipboard (with a brief checkmark confirmation). Requires your Client Portal Application ID to be set once via the menu command *"Set Portal App ID for Service Portal Links"* (this is the numeric ID in your Client Portal's URL, e.g. the "36" in `/TDClient/36/Portal/...`) — the buttons will prompt you for it if it isn't configured yet.
+Adds two buttons next to Refresh in the toolbar: one opens the ticket's Service Portal view in a new tab, the other copies its Service Portal URL to your clipboard (with a brief checkmark confirmation). Requires your Client Portal Application ID to be set once via the menu command *"Set Portal App ID for Service Portal Links"* (this is the numeric ID in your Client Portal's URL, e.g. the "123" in `tdx.domain/TDClient/123/Portal/...`) — the buttons will prompt you for it if it isn't configured yet.
 
 **Auto-Expand Feed**
 Automatically clicks "More" at the bottom of the ticket feed until all entries are loaded — no manual clicking required, on either the All or Communications tab.
