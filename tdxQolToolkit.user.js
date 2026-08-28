@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TDX Quality of Life Toolkit
 // @namespace    Any TDX Instance
-// @version      2.0.1
+// @version      2.0.2
 // @description  General-purpose toolkit for any TeamDynamix (TDX) instance's ticket detail and update pages: feed auto-expand, system-entry filtering, service portal links, keyboard shortcuts, templates menu keyboard fix, and off-hold date validation. Domain is auto-detected — no @match editing required.
 // @author       CJ Elardo, Alex Taylor, Claude
 // @match        *://*/TDNext/Apps/*/Tickets/TicketDet*
@@ -10,8 +10,8 @@
 // @grant        GM_setValue
 // @grant        GM_registerMenuCommand
 // @icon         https://www.google.com/s2/favicons?domain=teamdynamix.com
-// @updateURL    https://internal-site.example.com/scripts/tdx-toolkit.user.js
-// @downloadURL  https://internal-site.example.com/scripts/tdx-toolkit.user.js
+// @updateURL    https://github.com/UAA-Technical-Support-Center/TDX-Quality-of-Life-Toolkit/raw/refs/heads/main/tdxQolToolkit.user.js
+// @downloadURL  https://github.com/UAA-Technical-Support-Center/TDX-Quality-of-Life-Toolkit/raw/refs/heads/main/tdxQolToolkit.user.js
 // ==/UserScript==
 
 (function () {
