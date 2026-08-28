@@ -109,7 +109,7 @@
   // ---------- Service Portal Links ----------
   // Domain is auto-detected from location.origin — works on any TDX
   // instance without editing. The numeric Client Portal Application ID
-  // (the "36" in /TDClient/36/Portal/...) is NOT reliably auto-detectable
+  // (the "123" in tdx.domain/TDClient/123/Portal/...) is NOT reliably auto-detectable
   // from a ticket page and must be configured once via the Tampermonkey menu.
   function initServicePortalLinks() {
     waitForElement('#btnRefresh', (btnRefresh) => {
@@ -673,7 +673,7 @@
   GM_registerMenuCommand('Set Portal App ID for Service Portal Links', () => {
     const current = getModuleOption('service-portal-links', 'portalAppId', '');
     const next = prompt(
-      'TDClient Client Portal Application ID (numeric — found in your Client Portal URL, e.g. the "36" in /TDClient/36/Portal/...):',
+      'TDClient Client Portal Application ID (numeric — found in your Client Portal URL, e.g. the "123" in tdx.domain/TDClient/123/Portal/...):',
       current
     );
     if (next === null) return;
