@@ -13,7 +13,7 @@ The recent update to Tampermonkey noted that it will soon be necessary to [enabl
 
 ## Installing the script
 1. Open the [TDX Quality of Life Toolkit.user.js](https://github.com/UAA-Technical-Support-Center/TDX-Quality-of-Life-Toolkit/blob/main/tdxQolToolkit.user.js) file.
-2. Click the "[Copy raw file](https://github.blog/changelog/2021-09-20-quickly-copy-the-contents-of-a-file-to-the-clipboard/)" button
+2. Click the "Copy raw file" button (![Copy icon](https://github.com/user-attachments/assets/6f62f725-f950-4dae-8db5-7ba77ee35f6e))
 3. [Create a new Tampermonkey script](https://www.tampermonkey.net/faq.php#Q102).
 4. Delete the default code in the new script.
 5. Paste the copied code.
