@@ -10,8 +10,8 @@
 // @grant        GM_setValue
 // @grant        GM_registerMenuCommand
 // @icon         https://www.google.com/s2/favicons?domain=teamdynamix.com
-// @homepage     https://github.com/UAA-Technical-Support-Center/TDX-Quality-of-Life-Toolkit
-// @support      https://github.com/UAA-Technical-Support-Center/TDX-Quality-of-Life-Toolkit/issues
+// @homepageURL  https://github.com/UAA-Technical-Support-Center/TDX-Quality-of-Life-Toolkit
+// @supportURL   https://github.com/UAA-Technical-Support-Center/TDX-Quality-of-Life-Toolkit/issues
 // @updateURL    https://github.com/UAA-Technical-Support-Center/TDX-Quality-of-Life-Toolkit/raw/refs/heads/main/tdxQolToolkit.user.js
 // @downloadURL  https://github.com/UAA-Technical-Support-Center/TDX-Quality-of-Life-Toolkit/raw/refs/heads/main/tdxQolToolkit.user.js
 // ==/UserScript==
