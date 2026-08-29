@@ -10,6 +10,8 @@
 // @grant        GM_setValue
 // @grant        GM_registerMenuCommand
 // @icon         https://www.google.com/s2/favicons?domain=teamdynamix.com
+// @homepage     https://github.com/UAA-Technical-Support-Center/TDX-Quality-of-Life-Toolkit
+// @support      https://github.com/UAA-Technical-Support-Center/TDX-Quality-of-Life-Toolkit/issues
 // @updateURL    https://github.com/UAA-Technical-Support-Center/TDX-Quality-of-Life-Toolkit/raw/refs/heads/main/tdxQolToolkit.user.js
 // @downloadURL  https://github.com/UAA-Technical-Support-Center/TDX-Quality-of-Life-Toolkit/raw/refs/heads/main/tdxQolToolkit.user.js
 // ==/UserScript==
@@ -362,6 +364,16 @@
             document.body.click(); // lets Bootstrap's own outside-click handler close the dropdown
             document.getElementById(TOGGLE_ID)?.focus();
           }
+          break;
+        }
+        case 'Enter':
+        case ' ': {
+          // Custom ARIA menus (role="menuitem") are expected to handle
+          // activation themselves rather than rely on the browser's native
+          // Enter-on-focused-link behavior, which is what was causing
+          // Enter to move focus correctly but not actually select anything.
+          e.preventDefault(); e.stopPropagation();
+          currentA.click();
           break;
         }
         case 'Home': {
