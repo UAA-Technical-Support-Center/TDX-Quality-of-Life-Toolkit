@@ -1,17 +1,18 @@
 // ==UserScript==
 // @name         TDX Quality of Life Toolkit
 // @namespace    Any TDX Instance
-// @version      2.0.2
-// @description  General-purpose toolkit for any TeamDynamix (TDX) instance's ticket detail and update pages: feed auto-expand, system-entry filtering, service portal links, keyboard shortcuts, templates menu keyboard fix, and off-hold date validation. Domain is auto-detected — no @match editing required.
+// @version      2.0.3
+// @description  General-purpose toolkit for any TeamDynamix (TDX) instance's ticket detail, update, and edit pages: feed auto-expand, system-entry filtering, service portal links, keyboard shortcuts, templates menu keyboard fix, and off-hold date validation. Domain is auto-detected — no @match editing required.
 // @author       CJ Elardo, Alex Taylor, Claude
 // @match        *://*/TDNext/Apps/*/Tickets/TicketDet*
 // @match        *://*/TDNext/Apps/*/Tickets/Update*
+// @match        *://*/TDNext/Apps/*/Tickets/Edit*
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_registerMenuCommand
 // @icon         https://www.google.com/s2/favicons?domain=teamdynamix.com
-// @homepageURL  https://github.com/UAA-Technical-Support-Center/TDX-Quality-of-Life-Toolkit
-// @supportURL   https://github.com/UAA-Technical-Support-Center/TDX-Quality-of-Life-Toolkit/issues
+// @homepage     https://github.com/UAA-Technical-Support-Center/TDX-Quality-of-Life-Toolkit
+// @support      https://github.com/UAA-Technical-Support-Center/TDX-Quality-of-Life-Toolkit/issues
 // @updateURL    https://github.com/UAA-Technical-Support-Center/TDX-Quality-of-Life-Toolkit/raw/refs/heads/main/tdxQolToolkit.user.js
 // @downloadURL  https://github.com/UAA-Technical-Support-Center/TDX-Quality-of-Life-Toolkit/raw/refs/heads/main/tdxQolToolkit.user.js
 // ==/UserScript==
@@ -35,6 +36,24 @@
 
   const TICKET_DET_ANY_APP = /^\/TDNext\/Apps\/\d+\/Tickets\/TicketDet(\.aspx)?(?:$|[/?])/i;
   const TICKET_UPDATE_ANY_APP = /^\/TDNext\/Apps\/\d+\/Tickets\/Update(\.aspx)?(?:$|[/?])/i;
+  // Edit page shares the same btnSubmit Save button as Update, so
+  // update-page-shortcuts covers both — but Templates Menu Fix and Off Hold
+  // Date Validator are genuinely Update-specific (Templates dropdown and
+  // off-hold status fields aren't part of the Edit form), so they stay
+  // scoped to TICKET_UPDATE_ANY_APP alone.
+  const TICKET_EDIT_ANY_APP = /^\/TDNext\/Apps\/\d+\/Tickets\/Edit(\.aspx)?(?:$|[/?])/i;
+
+  // This script runs in Tampermonkey's sandboxed JS world (it uses GM_*
+  // grants, not @grant none), so its own `window` is NOT the page's real
+  // window — page-set globals like CKEDITOR are invisible to a plain
+  // `window.CKEDITOR` lookup here. `unsafeWindow` is what Tampermonkey
+  // provides specifically to reach into the real page window from a
+  // sandboxed script; fall back to `window` in case this ever runs
+  // unsandboxed instead.
+  function getCKEditor() {
+    const pageWindow = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
+    return pageWindow.CKEDITOR;
+  }
 
   // ---------- Module registry ----------
   const modules = [];
@@ -100,6 +119,14 @@
     defaultEnabled: true,
     matches: (pathname) => TICKET_UPDATE_ANY_APP.test(pathname),
     init: initOffHoldDateValidator
+  });
+
+  registerModule({
+    id: 'update-page-shortcuts',
+    label: 'Update Page Keyboard Shortcuts',
+    defaultEnabled: true,
+    matches: (pathname) => TICKET_UPDATE_ANY_APP.test(pathname) || TICKET_EDIT_ANY_APP.test(pathname),
+    init: initUpdatePageShortcuts
   });
 
   // Add new modules here — just call registerModule({...})
@@ -402,6 +429,7 @@
       'c': 'btnComment',        // Comment
       'm': 'divMergeInto',      // Merge Into
       't': 'btnTakeTicket',     // Take Service Request
+      'r': 'divReassignTicket', // Reassign
     };
 
     function isTypingContext(target) {
@@ -424,6 +452,213 @@
       e.preventDefault();
       el.click();
     }, true);
+
+    hookFeedCommentSaveShortcut();
+  }
+
+  // CKEditor-specific hook for the feed's comment/reply editors. Unlike the
+  // Update page's single static "Comments_Content" editor, the feed spawns a
+  // fresh CKEditor instance (id "feed-rte-<number>") every time a comment or
+  // reply box is opened, with no stable id on its Save button either — so
+  // this listens for ANY editor matching that id pattern as it's created,
+  // and locates its Save button by walking up to the nearest ancestor
+  // containing a button with the floppy-disk icon, rather than relying on a
+  // fixed element id or exact wrapper class name.
+  function hookFeedCommentSaveShortcut() {
+    const FEED_EDITOR_ID_PATTERN = /^feed-rte-\d+$/;
+    const MAIN_COMMENT_EDITOR_ID = 'txtComments_txtEditor_txtBody';
+    const MAIN_COMMENT_SAVE_BUTTON_ID = 'btnSaveComment';
+
+    function findNearbySaveButton(fromEl) {
+      let node = fromEl;
+      for (let i = 0; i < 6 && node; i++) {
+        const candidates = node.querySelectorAll('button.btn.btn-primary');
+        for (const btn of candidates) {
+          if (btn.querySelector('.fa-floppy-o')) return btn;
+        }
+        node = node.parentElement;
+      }
+      return null;
+    }
+
+    function attachToEditor(editor, findButton) {
+      if (editor._toolkitSaveHooked) return; // idempotent per editor instance
+      editor._toolkitSaveHooked = true;
+      editor.on('key', function (evt) {
+        const ck = getCKEditor();
+        const comboCode = ck.CTRL + ck.ALT + 83; // Ctrl+Alt+S
+        if (evt.data.keyCode === comboCode) {
+          const btn = findButton(editor);
+          if (btn) btn.click();
+          evt.cancel();
+          return false;
+        }
+      });
+    }
+
+    // Dispatches a newly-seen editor to the right hookup, based on its id:
+    // the main "Add Comment" box has a stable id and a stable Save button
+    // id, while feed replies get a fresh numbered id each time and have to
+    // locate their Save button by walking nearby ancestors instead.
+    function attachIfMatching(editor) {
+      const id = editor.element && editor.element.$ && editor.element.$.id;
+      if (id === MAIN_COMMENT_EDITOR_ID) {
+        attachToEditor(editor, () => document.getElementById(MAIN_COMMENT_SAVE_BUTTON_ID));
+      } else if (FEED_EDITOR_ID_PATTERN.test(id)) {
+        attachToEditor(editor, (ed) => {
+          const container = ed.container && ed.container.$;
+          return container ? findNearbySaveButton(container) : null;
+        });
+      }
+    }
+
+    function attachToAllExisting() {
+      const ck = getCKEditor();
+      if (!(ck && ck.instances)) return;
+      Object.values(ck.instances).forEach(attachIfMatching);
+    }
+
+    function registerInstanceReadyListener() {
+      const ck = getCKEditor();
+      if (!ck) return false;
+      ck.on('instanceReady', function (evt) {
+        attachIfMatching(evt.editor);
+      });
+      attachToAllExisting(); // catch anything already created before we attached
+      return true;
+    }
+
+    // The main comment editor is static and present from page load, so
+    // CKEDITOR itself should become available quickly — a bounded wait is
+    // fine here (unlike feed-reply editors, which are genuinely
+    // unpredictable in timing since they depend on user action).
+    if (!registerInstanceReadyListener()) {
+      let tries = 0;
+      (function waitForCKEditor() {
+        if (registerInstanceReadyListener()) return;
+        tries++;
+        if (tries < 40) setTimeout(waitForCKEditor, 250); // ~10s
+      })();
+    }
+
+    // Per-entry "Comment" buttons spawn a fresh feed-rte-N editor shortly
+    // after being clicked. Rather than polling for new instances from page
+    // load indefinitely, only look once we know one is actually about to
+    // appear — a short, bounded poll triggered by the click itself.
+    document.addEventListener('click', function (e) {
+      const btn = e.target.closest('button.btn.btn-link');
+      if (!btn || btn.textContent.trim() !== 'Comment') return;
+      let tries = 0;
+      (function pollForNewFeedEditor() {
+        attachToAllExisting();
+        tries++;
+        if (tries < 20) setTimeout(pollForNewFeedEditor, 150); // ~3s
+      })();
+    }, true);
+  }
+
+  // ---------- Update Page Keyboard Shortcuts ----------
+  let updatePageShortcutsInitialized = false;
+
+  function initUpdatePageShortcuts() {
+    if (updatePageShortcutsInitialized) return;
+    updatePageShortcutsInitialized = true;
+
+    const shortcuts = {
+      's': 'btnSubmit', // Save
+    };
+
+    function isTypingContext(target) {
+      if (!target) return false;
+      const tag = target.tagName ? target.tagName.toLowerCase() : '';
+      if (tag === 'input' || tag === 'textarea' || tag === 'select') return true;
+      if (target.isContentEditable) return true;
+      if (target.closest && target.closest('.cke_editable')) return true;
+      return false;
+    }
+
+    document.addEventListener('keydown', function (e) {
+      // Ctrl+Alt+S works even while typing in most fields, since that's the
+      // whole point of a modifier-based override. Chosen over plain Ctrl+S
+      // (Firefox reserves that at the browser-chrome level — preventDefault
+      // can't suppress its native Save Page dialog there) and over Alt+S
+      // alone (collides with Firefox's History-menu accesskey on Windows/
+      // Linux). Checked via e.code (physical key position) rather than
+      // e.key (produced character), since Option remaps letters on Mac
+      // keyboards and non-US layouts can produce different characters at
+      // the same physical key. NOTE: this listener still can't reach
+      // keystrokes typed inside the Comments box specifically, since that's
+      // rendered inside a CKEditor <iframe> — see hookCKEditorSaveShortcut
+      // below for that case.
+      if (e.ctrlKey && e.altKey && !e.metaKey && e.code === 'KeyS') {
+        e.preventDefault();
+        const el = document.getElementById(shortcuts['s']);
+        if (el) el.click();
+        return;
+      }
+
+      if (e.ctrlKey || e.altKey || e.metaKey) return;
+      if (isTypingContext(e.target)) return;
+      const key = e.key.toLowerCase();
+      const elementId = shortcuts[key];
+      if (!elementId) return;
+      const el = document.getElementById(elementId);
+      if (!el) return;
+      e.preventDefault();
+      el.click();
+    }, true);
+
+    hookCKEditorSaveShortcut(shortcuts);
+  }
+
+  // CKEditor-specific hook: the Comments box renders inside a CKEditor
+  // <iframe>, a separate document the page-level keydown listener above
+  // can't see into. CKEditor exposes its own 'key' event, fired for every
+  // keystroke inside the editable area before its own default handling —
+  // this bridges the gap without needing raw access to the iframe's DOM.
+  function hookCKEditorSaveShortcut(shortcuts) {
+    const COMMENTS_EDITOR_ID = 'Comments_Content';
+
+    function attachToEditor(editor) {
+      if (editor._toolkitSaveHooked) return; // idempotent, in case of re-init
+      editor._toolkitSaveHooked = true;
+      editor.on('key', function (evt) {
+        const ck = getCKEditor();
+        const comboCode = ck.CTRL + ck.ALT + 83; // Ctrl+Alt+S ('S' = keyCode 83)
+        if (evt.data.keyCode === comboCode) {
+          const el = document.getElementById(shortcuts['s']);
+          if (el) el.click();
+          evt.cancel();
+          return false;
+        }
+      });
+    }
+
+    function tryAttachExisting() {
+      const ck = getCKEditor();
+      if (ck && ck.instances && ck.instances[COMMENTS_EDITOR_ID]) {
+        attachToEditor(ck.instances[COMMENTS_EDITOR_ID]);
+        return true;
+      }
+      return false;
+    }
+
+    if (tryAttachExisting()) return;
+
+    let tries = 0;
+    (function waitForCKEditor() {
+      const ck = getCKEditor();
+      if (ck) {
+        ck.on('instanceReady', function (evt) {
+          if (evt.editor.element && evt.editor.element.$.id === COMMENTS_EDITOR_ID) {
+            attachToEditor(evt.editor);
+          }
+        });
+        if (tryAttachExisting()) return; // instance may already exist by now
+      }
+      tries++;
+      if (tries < 20) setTimeout(waitForCKEditor, 250); // give up after ~5s
+    })();
   }
 
   // ---------- Off Hold Date Validator ----------
