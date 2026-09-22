@@ -44,8 +44,14 @@ Press these keys anywhere on the page *except* while typing in a field or the co
 | `C` | Click Comment |
 | `M` | Click Merge Into |
 | `T` | Click Take (Service Requests) |
+| `R` | Click Reassign |
 
-Modifier keys (Ctrl/Alt/Cmd) are never intercepted, so normal browser shortcuts still work.
+Modifier keys (Ctrl/Alt/Cmd) are otherwise never intercepted, so normal browser shortcuts still work — with one exception: **Ctrl+Alt+S saves whatever comment or reply you're currently writing**, and works even while your cursor is inside that editor. This covers the main "Add Comment" box as well as any per-entry reply box in the feed — including multiple reply boxes open at once, where it saves whichever one you're actively typing in.
+
+**Update & Edit Page Keyboard Shortcuts**
+Press `S` anywhere on the page *except* while typing in a field, to click Save. **Ctrl+Alt+S** also saves, and unlike plain `S`, it works even while your cursor is in a field — including inside the Comments editor on the Update page. Applies to both the Update page and the Edit page.
+
+(Why Ctrl+Alt+S rather than Ctrl+S? Firefox reserves Ctrl+S at the browser level for its own "Save Page As" dialog, and pages can't override that. Alt+S alone collides with Firefox's History-menu accesskey on Windows/Linux. Ctrl+Alt+S avoids both.)
 
 ### On the Update Ticket page (`.../Tickets/Update...`)
 
