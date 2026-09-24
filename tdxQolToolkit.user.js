@@ -1,12 +1,13 @@
 // ==UserScript==
 // @name         TDX Quality of Life Toolkit
 // @namespace    Any TDX Instance
-// @version      2.0.3
-// @description  General-purpose toolkit for any TeamDynamix (TDX) instance's ticket detail, update, and edit pages: feed auto-expand, system-entry filtering, service portal links, keyboard shortcuts, templates menu keyboard fix, and off-hold date validation. Domain is auto-detected — no @match editing required.
+// @version      2.1.0
+// @description  General-purpose toolkit for any TeamDynamix (TDX) instance's ticket detail, update, and edit pages: feed auto-expand, system-entry filtering, service portal links, keyboard shortcuts, templates menu keyboard fix, off-hold date validation, and archived KB article highlighting (Client Portal KB pages). Domain is auto-detected — no @match editing required.
 // @author       CJ Elardo, Alex Taylor, Claude
 // @match        *://*/TDNext/Apps/*/Tickets/TicketDet*
 // @match        *://*/TDNext/Apps/*/Tickets/Update*
 // @match        *://*/TDNext/Apps/*/Tickets/Edit*
+// @match        *://*/TDClient/*/Portal/KB/Article*
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_registerMenuCommand
@@ -32,7 +33,18 @@
   //   - TeamDynamix Ticket Shortcuts (v1.0)
   //   - TDX Off Hold Date Validator (v1.0, rewritten to detect hold statuses
   //     dynamically instead of hardcoding instance-specific status IDs)
+  //   - TDX KB Archived Article Highlighter (v0.1.0)
   // ==========================================================================
+
+  // ---------- Naming ----------
+  // Prefix for everything this script puts on the page: element ids, class
+  // names, data attributes, <style> ids, console tags, and flags set on
+  // CKEditor instances. The UA-specific companion script (uaTdxQol.user.js)
+  // runs alongside this one and uses 'ua-qol-', so the two never mistake
+  // each other's elements for their own. Change this one line when forking.
+  const ID_PREFIX = 'qol-';
+  const LOG_TAG = `[${ID_PREFIX.replace(/-$/, '')}]`;       // "[qol]"
+  const EDITOR_HOOK_FLAG = `_${ID_PREFIX}saveHooked`;        // "_qol-saveHooked"
 
   const TICKET_DET_ANY_APP = /^\/TDNext\/Apps\/\d+\/Tickets\/TicketDet(\.aspx)?(?:$|[/?])/i;
   const TICKET_UPDATE_ANY_APP = /^\/TDNext\/Apps\/\d+\/Tickets\/Update(\.aspx)?(?:$|[/?])/i;
@@ -42,6 +54,10 @@
   // off-hold status fields aren't part of the Edit form), so they stay
   // scoped to TICKET_UPDATE_ANY_APP alone.
   const TICKET_EDIT_ANY_APP = /^\/TDNext\/Apps\/\d+\/Tickets\/Edit(\.aspx)?(?:$|[/?])/i;
+  // Client Portal KB article view: covers /KB/Article/<id>/<slug> and
+  // /KB/ArticleDet?ID=<id>, but deliberately not /KB/ArticleEdit etc. (the
+  // @match for this path is broader; this regex is the real gate).
+  const KB_ARTICLE_ANY_PORTAL = /^\/TDClient\/\d+\/Portal\/KB\/Article(?:Det)?(?:\.aspx)?(?:$|\/)/i;
 
   // This script runs in Tampermonkey's sandboxed JS world (it uses GM_*
   // grants, not @grant none), so its own `window` is NOT the page's real
@@ -61,11 +77,11 @@
 
   function registerModule({ id, label, defaultEnabled = true, matches, init }) {
     if (!id || !label || typeof matches !== 'function' || typeof init !== 'function') {
-      console.error('[toolkit] invalid module registration:', { id, label });
+      console.error(LOG_TAG + ' invalid module registration:', { id, label });
       return;
     }
     if (seenIds.has(id)) {
-      console.error(`[toolkit] duplicate module id "${id}" — skipped`);
+      console.error(`${LOG_TAG} duplicate module id "${id}" — skipped`);
       return;
     }
     seenIds.add(id);
@@ -129,6 +145,14 @@
     init: initUpdatePageShortcuts
   });
 
+  registerModule({
+    id: 'archived-article-highlighter',
+    label: 'Archived KB Article Highlighter',
+    defaultEnabled: true,
+    matches: (pathname) => KB_ARTICLE_ANY_PORTAL.test(pathname),
+    init: initArchivedArticleHighlighter
+  });
+
   // Add new modules here — just call registerModule({...})
 
   // ==========================================================================
@@ -142,7 +166,7 @@
   // from a ticket page and must be configured once via the Tampermonkey menu.
   function initServicePortalLinks() {
     waitForElement('#btnRefresh', (btnRefresh) => {
-      if (document.getElementById('toolkit-service-portal-open')) return; // already inserted
+      if (document.getElementById(ID_PREFIX + 'service-portal-open')) return; // already inserted
 
       const refreshLi = btnRefresh.parentNode;
       const toolbarList = refreshLi.parentNode;
@@ -163,7 +187,7 @@
       }
 
       const openLi = document.createElement('li');
-      openLi.id = 'toolkit-service-portal-open';
+      openLi.id = ID_PREFIX + 'service-portal-open';
       openLi.innerHTML = `<button type="button" class="btn btn-primary btn-sm" title="To Service Portal">
         <span class="fa fa-external-link fa-nopad" aria-hidden="true"></span>
         <span class="hidden-xs padding-left-xs">To Service Portal</span>
@@ -177,7 +201,7 @@
       });
 
       const copyLi = document.createElement('li');
-      copyLi.id = 'toolkit-service-portal-copy';
+      copyLi.id = ID_PREFIX + 'service-portal-copy';
       copyLi.innerHTML = `<button type="button" class="btn btn-primary btn-sm" title="Copy Service Portal URL">
         <span class="fa fa-copy fa-nopad" aria-hidden="true"></span>
         <span class="hidden-xs padding-left-xs">Copy Service Portal URL</span>
@@ -231,7 +255,7 @@
   // ---------- Hide System Feed Entries ----------
   function initHideSystemEntries() {
     waitForElement('#ticketFeed', (feedRoot) => {
-      const CHECKBOX_ID = 'toolkit-show-system-checkbox';
+      const CHECKBOX_ID = ID_PREFIX + 'show-system-checkbox';
       let showSystem = true;
 
       function applyFilter() {
@@ -285,11 +309,13 @@
     templatesMenuKeyboardFixInitialized = true;
 
     const TOGGLE_ID = 'lnkShowTemplates';
-    const OPEN_CLASS = 'js-kb-force-open';
+    const OPEN_CLASS = ID_PREFIX + 'kb-force-open';
+    const STYLE_ID = ID_PREFIX + 'templates-menu-kb-fix-style';
+    const FIXED_ATTR = 'data-' + ID_PREFIX + 'kb-fixed';
 
-    if (!document.getElementById('toolkit-templates-menu-kb-fix-style')) {
+    if (!document.getElementById(STYLE_ID)) {
       const style = document.createElement('style');
-      style.id = 'toolkit-templates-menu-kb-fix-style';
+      style.id = STYLE_ID;
       style.textContent = `
         li.dropdown-submenu.${OPEN_CLASS} > ul.dropdown-menu {
           display: block !important;
@@ -299,8 +325,8 @@
     }
 
     function annotate(menu) {
-      if (menu.dataset.kbFixed) return;
-      menu.dataset.kbFixed = '1';
+      if (menu.hasAttribute(FIXED_ATTR)) return;
+      menu.setAttribute(FIXED_ATTR, '1');
       menu.setAttribute('role', 'menu');
       menu.querySelectorAll(':scope > li > a').forEach(a => a.setAttribute('role', 'menuitem'));
       menu.querySelectorAll('li.dropdown-submenu > a').forEach(a => {
@@ -482,8 +508,8 @@
     }
 
     function attachToEditor(editor, findButton) {
-      if (editor._toolkitSaveHooked) return; // idempotent per editor instance
-      editor._toolkitSaveHooked = true;
+      if (editor[EDITOR_HOOK_FLAG]) return; // idempotent per editor instance
+      editor[EDITOR_HOOK_FLAG] = true;
       editor.on('key', function (evt) {
         const ck = getCKEditor();
         const comboCode = ck.CTRL + ck.ALT + 83; // Ctrl+Alt+S
@@ -620,8 +646,8 @@
     const COMMENTS_EDITOR_ID = 'Comments_Content';
 
     function attachToEditor(editor) {
-      if (editor._toolkitSaveHooked) return; // idempotent, in case of re-init
-      editor._toolkitSaveHooked = true;
+      if (editor[EDITOR_HOOK_FLAG]) return; // idempotent, in case of re-init
+      editor[EDITOR_HOOK_FLAG] = true;
       editor.on('key', function (evt) {
         const ck = getCKEditor();
         const comboCode = ck.CTRL + ck.ALT + 83; // Ctrl+Alt+S ('S' = keyCode 83)
@@ -698,7 +724,7 @@
     function ensureWarningMsg() {
       if (warningMsg && document.body.contains(warningMsg)) return warningMsg;
       warningMsg = document.createElement('span');
-      warningMsg.id = 'toolkit-off-hold-warning';
+      warningMsg.id = ID_PREFIX + 'off-hold-warning';
       warningMsg.style.marginLeft = '10px';
       warningMsg.style.fontWeight = 'bold';
       warningMsg.style.display = 'none';
@@ -769,7 +795,7 @@
         const now = new Date();
 
         if (isNaN(enteredDate.getTime())) {
-          console.warn('[toolkit] off-hold-date-validator: invalid date format:', rawValue);
+          console.warn(LOG_TAG + ' off-hold-date-validator: invalid date format:', rawValue);
           applyState(saveButton, goesOffHoldInput, goesOffHoldLabel, msg, {
             kind: 'warn', text: 'Invalid date format', color: '#B73D26', disableSave: true
           });
@@ -791,7 +817,7 @@
           applyState(saveButton, goesOffHoldInput, goesOffHoldLabel, msg, { kind: 'reset' });
         }
       } catch (err) {
-        console.error('[toolkit] off-hold-date-validator: error in updateUI:', err);
+        console.error(LOG_TAG + ' off-hold-date-validator: error in updateUI:', err);
       }
     }
 
@@ -844,9 +870,129 @@
     });
   }
 
+  // ---------- Archived KB Article Highlighter ----------
+  // Client Portal KB articles, technician view only (the public view has no
+  // #divDetails panel, so this is a no-op there). When the article's status
+  // is Archived, adds a red "ARCHIVED" badge to the <h1> and a banner above
+  // it. TDX's own divArchivedWarning (below the tags) is left untouched.
+  //
+  // Colors are set explicitly rather than via Bootstrap's alert-danger /
+  // label-danger, so a TDX theme override can't drop contrast below WCAG AA:
+  //   Banner text  #7a1f1f on #f2dede  ~7.9:1  (AA and AAA)
+  //   Badge text   #ffffff on #a94442  ~5.8:1  (AA)
+  // Meaning is never carried by color alone — both say "ARCHIVED" in text.
+  let archivedHighlighterInitialized = false;
+
+  function initArchivedArticleHighlighter() {
+    if (archivedHighlighterInitialized) return;
+    archivedHighlighterInitialized = true;
+
+    const ARCHIVED_STATUS = 'archived';
+    const STATUS_DIV_ID = 'ctl00_ctl00_cpContent_cpContent_divStatus';
+    const BANNER_ID = ID_PREFIX + 'archived-banner';
+    const BADGE_ID = ID_PREFIX + 'archived-badge';
+    const STYLE_ID = ID_PREFIX + 'archived-style';
+    const HEADLINE_CLASS = ID_PREFIX + 'archived-headline';
+
+    const CSS = `
+      #${BANNER_ID} {
+        color: #7a1f1f;
+        background-color: #f2dede;
+        border: 1px solid #ebccd1;
+        border-left: 6px solid #a94442;
+        border-radius: var(--tdx-border-radius, 4px);
+        padding: 15px;
+        margin: 20px 0 0;
+      }
+      #${BANNER_ID} .${HEADLINE_CLASS} {
+        display: block;
+        font-size: 1.25em;
+        font-weight: 700;
+        letter-spacing: 0.05em;
+      }
+      #${BADGE_ID} {
+        background-color: #a94442;
+        color: #ffffff;
+        font-size: 0.55em;
+        letter-spacing: 0.05em;
+        vertical-align: middle;
+        margin-right: 0.5em;
+      }
+    `;
+
+    // Exact ASP.NET id first; suffix match as a fallback in case the
+    // generated ctl00_... prefix ever changes.
+    function findStatusDiv() {
+      const details = document.getElementById('divDetails');
+      if (!details) return null;
+      return details.querySelector('#' + STATUS_DIV_ID)
+        || details.querySelector('[id$="_divStatus"]');
+    }
+
+    // Prefer the status label span; fall back to the div's text minus the
+    // "Status:" prefix if TDX ever drops the .label wrapper. Exact match so
+    // a hypothetical "Pending Archive" status wouldn't trigger it.
+    function getStatusText(statusDiv) {
+      const label = statusDiv.querySelector('.label');
+      const raw = label
+        ? label.textContent
+        : statusDiv.textContent.replace(/^\s*Status:\s*/i, '');
+      return raw.trim();
+    }
+
+    function injectStyle() {
+      if (document.getElementById(STYLE_ID)) return;
+      const style = document.createElement('style');
+      style.id = STYLE_ID;
+      style.textContent = CSS;
+      document.head.appendChild(style);
+    }
+
+    function markArchived() {
+      const main = document.getElementById('divMainContent');
+      const h1 = main && main.querySelector('h1');
+      if (!h1) return;
+
+      injectStyle();
+
+      if (!document.getElementById(BADGE_ID)) {
+        const badge = document.createElement('span');
+        badge.id = BADGE_ID;
+        badge.className = 'label';
+        badge.textContent = 'ARCHIVED';
+        h1.insertBefore(badge, h1.firstChild);
+      }
+
+      if (!document.getElementById(BANNER_ID)) {
+        const banner = document.createElement('div');
+        banner.id = BANNER_ID;
+        banner.innerHTML = `
+          <span class="${HEADLINE_CLASS}">
+            <span class="fa-solid fa-box-archive fa-fw" aria-hidden="true"></span>
+            ARCHIVED
+          </span>
+          This article is archived.
+        `;
+        h1.parentNode.insertBefore(banner, h1);
+      }
+    }
+
+    // Status is server-rendered, so this normally resolves immediately; the
+    // short timeout just avoids lingering on pages without a Details panel.
+    waitForElement(findStatusDiv, (statusDiv) => {
+      if (getStatusText(statusDiv).toLowerCase() === ARCHIVED_STATUS) {
+        markArchived();
+      }
+    }, 5000);
+  }
+
   // ==========================================================================
   // Config helpers
   // ==========================================================================
+  // Deliberately NOT derived from ID_PREFIX. These are the keys Tampermonkey
+  // has already saved everyone's settings under (module toggles, Portal App
+  // ID, Off Hold threshold); renaming would silently reset them. GM storage
+  // is also per-script, so this can't collide with the UA companion script.
   const CONFIG_PREFIX = 'toolkit_';
 
   function isEnabled(moduleId, defaultEnabled) {
@@ -899,7 +1045,7 @@
         try {
           mod.init();
         } catch (e) {
-          console.error(`[toolkit] module "${mod.id}" failed:`, e);
+          console.error(`${LOG_TAG} module "${mod.id}" failed:`, e);
         }
       }
     });
